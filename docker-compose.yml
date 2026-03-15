@@ -1,0 +1,139 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Mock Consumer Banking App — full stack
+#
+# Start this gateway only:
+#   docker compose up gateway
+#
+# Start everything (once all service repos are cloned alongside this one):
+#   docker compose up
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Infrastructure ─────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: banking
+      POSTGRES_PASSWORD: banking
+      POSTGRES_DB: banking
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banking"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── API Gateway (this repo) ─────────────────────────────────────────────────
+
+  gateway:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: development
+      JWT_SECRET: supersecret123
+      AUTH_SERVICE_URL: http://auth:8001
+      CORE_SERVICE_URL: http://core:8002
+      PRODUCTS_SERVICE_URL: http://products:8003
+      SUPPORT_SERVICE_URL: http://support:8004
+    depends_on:
+      - auth
+      - core
+      - products
+      - support
+    restart: unless-stopped
+
+  # ── Auth Service (banking-app-auth) ────────────────────────────────────────
+
+  auth:
+    image: banking-app-auth:latest
+    build:
+      context: ../banking-app-auth
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://banking:banking@postgres:5432/banking
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: supersecret123
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Core Banking Service (banking-app-core) ────────────────────────────────
+
+  core:
+    image: banking-app-core:latest
+    build:
+      context: ../banking-app-core
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      DATABASE_URL: postgresql://banking:banking@postgres:5432/banking
+      AUTH_SERVICE_URL: http://auth:8001
+      JWT_SECRET: supersecret123
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Products Service (banking-app-products) ────────────────────────────────
+
+  products:
+    image: banking-app-products:latest
+    build:
+      context: ../banking-app-products
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      DATABASE_URL: postgresql://banking:banking@postgres:5432/banking
+      AUTH_SERVICE_URL: http://auth:8001
+      # VULNERABILITY: Hardcoded API key (set in banking-app-products source)
+      CREDIT_BUREAU_API_KEY: cb_live_4e3f8a2b1c9d7e6f5a4b3c2d1e0f9a8b
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Support Service (banking-app-support) ─────────────────────────────────
+
+  support:
+    image: banking-app-support:latest
+    build:
+      context: ../banking-app-support
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      DATABASE_URL: postgresql://banking:banking@postgres:5432/banking
+      AUTH_SERVICE_URL: http://auth:8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

@@ -1,0 +1,484 @@
+openapi: "3.0.0"
+info:
+  title: Banking App API Gateway
+  description: |
+    Mock Consumer Banking API — routes traffic to downstream microservices.
+
+    **Auth routes** (`/auth/*`) are unauthenticated.
+    All other routes require a `Bearer` JWT in the `Authorization` header.
+  version: "1.0.0"
+  contact:
+    name: Demo Banking App
+
+servers:
+  - url: http://localhost:3000
+    description: Local development gateway
+
+tags:
+  - name: Auth
+    description: Register, login, token refresh
+  - name: Accounts
+    description: Bank accounts and transaction history
+  - name: Transfers
+    description: Fund transfers between accounts
+  - name: Products
+    description: Credit card and loan applications
+  - name: Support
+    description: Customer support tickets
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Account:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        type:
+          type: string
+          enum: [checking, savings]
+        balance:
+          type: number
+        currency:
+          type: string
+          default: USD
+        status:
+          type: string
+          enum: [active, frozen, closed]
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+        from_account_id:
+          type: string
+        to_account_id:
+          type: string
+        amount:
+          type: number
+        type:
+          type: string
+          enum: [transfer, deposit, withdrawal]
+        status:
+          type: string
+          enum: [pending, completed, failed]
+        created_at:
+          type: string
+          format: date-time
+
+    Ticket:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        subject:
+          type: string
+        status:
+          type: string
+          enum: [open, in_progress, closed]
+        created_at:
+          type: string
+          format: date-time
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Gateway health check
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  service:
+                    type: string
+                  timestamp:
+                    type: string
+
+  /debug/config:
+    get:
+      summary: "[VULN] Dump gateway environment config"
+      description: "**Intentional vulnerability** — returns full process.env including secrets."
+      security: []
+      responses:
+        "200":
+          description: Environment dump
+
+  # ── Auth ──────────────────────────────────────────────────────────────────
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Validation error
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and receive JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "200":
+          description: JWT token pair
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+        "401":
+          description: Invalid credentials
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        "200":
+          description: New access token
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user profile
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  # ── Accounts ──────────────────────────────────────────────────────────────
+
+  /accounts:
+    get:
+      tags: [Accounts]
+      summary: List accounts for the authenticated user
+      responses:
+        "200":
+          description: List of accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Account"
+
+    post:
+      tags: [Accounts]
+      summary: Open a new account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type:
+                  type: string
+                  enum: [checking, savings]
+                currency:
+                  type: string
+                  default: USD
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+
+  /accounts/{id}:
+    get:
+      tags: [Accounts]
+      summary: "[VULN] Get account by ID — no ownership check (IDOR)"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Account details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+
+  /accounts/{id}/transactions:
+    get:
+      tags: [Accounts]
+      summary: List transactions for an account
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+          description: "[VULN] Passed unsanitized to raw SQL in core service"
+      responses:
+        "200":
+          description: Transaction list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transaction"
+
+  # ── Transfers ─────────────────────────────────────────────────────────────
+
+  /transfers:
+    post:
+      tags: [Transfers]
+      summary: Transfer funds between accounts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_account_id, to_account_id, amount]
+              properties:
+                from_account_id:
+                  type: string
+                to_account_id:
+                  type: string
+                amount:
+                  type: number
+      responses:
+        "200":
+          description: Transfer result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+
+  # ── Products ──────────────────────────────────────────────────────────────
+
+  /products:
+    get:
+      tags: [Products]
+      summary: List available products (credit cards, loans)
+      responses:
+        "200":
+          description: Product catalog
+
+  /products/credit-card/apply:
+    post:
+      tags: [Products]
+      summary: Apply for a credit card
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                annual_income:
+                  type: number
+                employment_status:
+                  type: string
+      responses:
+        "201":
+          description: Application submitted
+
+  /products/loan/apply:
+    post:
+      tags: [Products]
+      summary: Apply for a personal loan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                purpose:
+                  type: string
+                annual_income:
+                  type: number
+      responses:
+        "201":
+          description: Application submitted
+
+  /applications/{id}:
+    get:
+      tags: [Products]
+      summary: "[VULN] Get application by ID — no ownership check (IDOR)"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Application details
+
+  # ── Support ───────────────────────────────────────────────────────────────
+
+  /tickets:
+    post:
+      tags: [Support]
+      summary: Open a support ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject]
+              properties:
+                subject:
+                  type: string
+      responses:
+        "201":
+          description: Ticket created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticket"
+
+    get:
+      tags: [Support]
+      summary: List support tickets for the authenticated user
+      responses:
+        "200":
+          description: List of tickets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Ticket"
+
+  /tickets/{id}:
+    get:
+      tags: [Support]
+      summary: Get ticket details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ticket details
+
+  /tickets/{id}/messages:
+    post:
+      tags: [Support]
+      summary: "[VULN] Post a message to a ticket — stored XSS (unsanitized body)"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body:
+                  type: string
+                  example: "<script>alert(document.cookie)</script>"
+      responses:
+        "201":
+          description: Message posted

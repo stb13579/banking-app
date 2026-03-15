@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Verify app starts (smoke test)
+        run: |
+          node src/index.js &
+          SERVER_PID=$!
+          sleep 2
+          curl -f http://localhost:3000/health
+          kill $SERVER_PID
+        env:
+          PORT: 3000
+          JWT_SECRET: test-secret
+          AUTH_SERVICE_URL: http://localhost:8001
+          CORE_SERVICE_URL: http://localhost:8002
+          PRODUCTS_SERVICE_URL: http://localhost:8003
+          SUPPORT_SERVICE_URL: http://localhost:8004
+
+  docker-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t banking-app:ci .
