@@ -1,0 +1,43 @@
+{
+  "patches": {
+    "pkg:npm/semver@7.0.0": {
+      "uuid": "17c7838e-95d2-4726-b622-e91d8488d355",
+      "exportedAt": "Tue, 03 Mar 2026 23:57:36 GMT",
+      "files": {
+        "package/classes/comparator.js": {
+          "beforeHash": "1e264e5d8fe9fe26d654ae6958e6348d87ce82e649179db02f124e9156e15a7f",
+          "afterHash": "0156b7b1dab0845869331668c90d7a5bb0329455bc6a8a497457e44bf1b41873"
+        },
+        "package/classes/range.js": {
+          "beforeHash": "e94c55ccd7ecfe1554c60653c47fd74c47c0e5cd71364b605cbcc91330a712d0",
+          "afterHash": "90c2827c9f728d9887f98e8246f55d69b8cc8a2b02289094c453a4074610062f"
+        },
+        "package/classes/semver.js": {
+          "beforeHash": "dc480e91f4df10c851175308928cd849540a29cba1721d158ea19c4af591d4fb",
+          "afterHash": "584a15381812ddb1bbd724fbb217893595fb7c61a1d14912af1bb0a9b9f1e0c7"
+        },
+        "package/functions/parse.js": {
+          "beforeHash": "8fb045d6492197caa1b73a42769a569fc00ccc523616466d8b0a66abcc45e736",
+          "afterHash": "3f05c3eef0f339903a19bd364cfda60ddf3faf637aca3e1fa3f7a58661419da6"
+        },
+        "package/internal/re.js": {
+          "beforeHash": "df1313e3beeb0abc56b201f3534fb057883335294b2992545f733919be63db51",
+          "afterHash": "4eebbce1721e711ba69c2993c7d4fae44216263281ebfb0f740e9a067c9e4b1c"
+        }
+      },
+      "vulnerabilities": {
+        "GHSA-c2qf-rxjj-qqgw": {
+          "cves": [
+            "CVE-2022-25883"
+          ],
+          "summary": "semver vulnerable to Regular Expression Denial of Service",
+          "severity": "HIGH",
+          "description": "Versions of the package semver before 7.5.2 on the 7.x branch, before 6.3.1 on the 6.x branch, and all other versions before 5.7.2 are vulnerable to Regular Expression Denial of Service (ReDoS) via the function new Range, when untrusted user data is provided as a range."
+        }
+      },
+      "description": "",
+      "license": "MIT",
+      "tier": "free"
+    }
+  }
+}
