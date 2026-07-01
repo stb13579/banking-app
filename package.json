@@ -12,11 +12,11 @@
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
+    "express-rate-limit": "^7.2.0",
     "http-proxy-middleware": "^2.0.6",
-    "jsonwebtoken": "^8.5.1",
+    "jsonwebtoken": "https://npm.aikido.io/d68662afd4f89238311c/jsonwebtoken@8.5.1-aikido.4",
     "morgan": "^1.10.0",
     "swagger-ui-express": "^4.6.3",
-    "express-rate-limit": "^7.2.0",
     "yamljs": "^0.3.0"
   },
   "devDependencies": {
